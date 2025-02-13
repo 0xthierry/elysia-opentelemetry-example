@@ -1,7 +1,8 @@
 import { Elysia, t } from 'elysia'
 import { prisma } from './utils'
 import { randomBytes } from 'crypto'
-import { safeExecuteInTheMiddle } from '@opentelemetry/instrumentation'
+import { getCurrentSpan } from '@elysiajs/opentelemetry'
+import opentelemetry from '@opentelemetry/api'
 
 export const validateSession = new Elysia()
 	.model({
@@ -150,22 +151,31 @@ export const user = new Elysia({
 	.put(
 		'sign-up',
 		async ({ body: { username, password }, error }) => {
+			const span = getCurrentSpan()
+			span?.updateName('handleSignUp')
+
 			const user = await prisma.user.findFirst({
 				where: {
-					name: username,
-					password
+					name: username
 				},
 				select: {
 					id: true
 				}
 			})
 
-			if (user)
+			if (user) {
+				span?.addEvent('User already exists', {
+					username
+				})
 				return error(401, {
 					success: false,
 					message: 'User already exists'
 				})
+			}
 
+			const tracer = opentelemetry.trace.getTracer('elysia-opentelemetry-example')
+			const ctx = opentelemetry.trace.setSpan(opentelemetry.context.active(), span!)
+			const hashSpan = tracer.startSpan('hashPassword', undefined, ctx)
 			const salt = randomBytes(32).toString('hex')
 
 			const hash = await Bun.password.hash(password + salt, {
@@ -174,13 +184,19 @@ export const user = new Elysia({
 				timeCost: 3
 			})
 
+			hashSpan.setAttributes({
+				'user.username': username,
+			})
+
+			hashSpan.end()
+
 			await prisma.user.create({
 				data: {
 					name: username,
 					password: hash,
 					salt
 				},
-				select: null
+				select: null,
 			})
 
 			return { success: true, message: 'User created' }

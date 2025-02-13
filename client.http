@@ -1,0 +1,12 @@
+### Get health
+GET http://localhost:3000/health
+
+### Create User
+PUT http://localhost:3000/user/sign-up
+Content-Type: application/json
+
+{
+	"username": "johndoeeeeee",
+	"password": "password"
+}
+

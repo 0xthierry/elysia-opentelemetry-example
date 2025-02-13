@@ -32,6 +32,8 @@ model User {
 
     posts    Post[]
     sessions Session[]
+
+    @@index([name])
 }
 
 model Post {
